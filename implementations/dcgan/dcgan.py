@@ -143,7 +143,38 @@ discriminator.apply(weights_init_normal)
 # )
 
 ds = deeplake.load('hub://activeloop/wiki-art')
-dataloader = ds.pytorch(num_workers=0, batch_size=opt.batch_size, shuffle=False)
+
+def transform(sample):
+    # Get the image from the sample
+    img = sample['images']
+    # Convert to tensor and normalize
+    img = torch.from_numpy(img).float()
+    #permute to [C, H, W] format
+    img = img.permute(2, 0, 1)
+    # Resize to 256x256
+    img = F.interpolate(img.unsqueeze(0), size=(opt.img_size, opt.img_size), mode='bilinear', align_corners=False).squeeze(0)
+    # Normalize to [-1, 1]
+    img = img / 255.0 * 2.0 - 1.0
+    # Permute to [C, H, W] format
+    # img = img.permute(2, 0, 1)
+    return {'images': img, 'labels': sample['labels'], 'index': sample['index']}
+
+def collate_fn(batch):
+    # Stack images
+    images = torch.stack([item['images'] for item in batch])
+    # Stack labels
+    labels = torch.stack([torch.tensor(item['labels']) for item in batch])
+    # Stack indices
+    indices = torch.stack([torch.tensor(item['index']) for item in batch])
+    return {'images': images, 'labels': labels, 'index': indices}
+
+dataloader = ds.pytorch(
+    num_workers=0, 
+    batch_size=opt.batch_size, 
+    shuffle=False,
+    transform=transform,
+    collate_fn=collate_fn
+)
 
 # Optimizers
 optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
@@ -164,20 +195,12 @@ for epoch in range(opt.n_epochs):
         # Extract images from the batch dictionary
         imgs = batch['images']
         
-        imgs = imgs.permute(0, 3, 1, 2)
-
-        # Resize images to 256x256
-        imgs = F.interpolate(imgs, size=(opt.img_size, opt.img_size), mode='bilinear', align_corners=False)
-        
-        # Convert images to float and normalize to [-1, 1]
-        imgs = imgs.float() / 255.0 * 2.0 - 1.0
+        # Images are already transformed, no need for additional processing
+        real_imgs = Variable(imgs.type(Tensor))
 
         # Adversarial ground truths
         valid = Variable(Tensor(imgs.shape[0], 1).fill_(1.0), requires_grad=False)
         fake = Variable(Tensor(imgs.shape[0], 1).fill_(0.0), requires_grad=False)
-
-        # Configure input
-        real_imgs = Variable(imgs.type(Tensor))
 
         # -----------------
         #  Train Generator
