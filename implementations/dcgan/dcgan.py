@@ -2,7 +2,7 @@ import argparse
 import os
 import numpy as np
 import math
-
+from tqdm import tqdm
 import torchvision.transforms as transforms
 from torchvision.utils import save_image, make_grid
 
@@ -203,7 +203,7 @@ Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 for epoch in range(opt.n_epochs):
     all_gloss = []
     all_dloss = []
-    for i, batch in enumerate(dataloader):
+    for batch_idx, batch in tqdm(enumerate(dataloader)):
         # Extract images from the batch dictionary
         imgs = batch['images']
         
@@ -250,16 +250,16 @@ for epoch in range(opt.n_epochs):
         all_dloss.append(d_loss.item())
 
         # Log batch-level metrics to TensorBoard
-        batches_done = epoch * len(dataloader) + i
+        batches_done = epoch * len(dataloader) + batch_idx
         writer.add_scalar('Loss/Batch/Generator', g_loss.item(), batches_done)
         writer.add_scalar('Loss/Batch/Discriminator', d_loss.item(), batches_done)
 
         print(
             "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
-            % (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(), g_loss.item())
+            % (epoch, opt.n_epochs, batch_idx, len(dataloader), d_loss.item(), g_loss.item())
         )
 
-        batches_done = epoch * len(dataloader) + i
+        batches_done = epoch * len(dataloader) + batch_idx
         if batches_done % opt.sample_interval == 0:
             save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
             # Log generated images to TensorBoard
